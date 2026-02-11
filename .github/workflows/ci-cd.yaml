@@ -18,7 +18,7 @@ jobs:
   docker-build-push:
     name: Docker Build & Push
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -105,23 +105,29 @@ jobs:
           DATABASE_URI: ${{ secrets.DATABASE_URI }}
           API_URL: ${{ secrets.API_URL }}
         run: |
-          # Delete existing secret to force update (secrets don't auto-reload in pods)
+          # Step 1: Delete existing secret to force update
           kubectl delete secret expensy-secrets -n expensy --ignore-not-found=true
+          sleep 2
 
-          # Create secrets.yaml with actual values
+          # Step 2: Create secrets first (before any deployments)
           envsubst < k8s/secrets.yaml | kubectl apply -f - -n expensy
 
-          # Update image tags in Kubernetes manifests
-          sed -i "s|IMAGE_TAG|${{ github.sha }}|g" k8s/*.yaml
+          # Step 3: Wait for secret to be ready
+          kubectl get secret expensy-secrets -n expensy -o jsonpath='{.metadata.name}' 2>/dev/null || sleep 1
 
-          # Apply Kubernetes manifests
-          kubectl apply -f k8s/ -n expensy
+          # Step 4: Update image tags in deployment manifests (NOT secrets.yaml)
+          sed -i "s|IMAGE_TAG|${{ github.sha }}|g" k8s/deployment*.yaml k8s/backend*.yaml k8s/frontend*.yaml 2>/dev/null || true
 
-          # Force pod restart to pick up new secrets
+          # Step 5: Apply all other Kubernetes manifests (excluding secrets)
+          for file in k8s/*.yaml; do
+            [ "$file" != "k8s/secrets.yaml" ] && kubectl apply -f "$file" -n expensy
+          done
+
+          # Step 6: Force pod restart to pick up new secrets
           kubectl rollout restart deployment/backend -n expensy
           kubectl rollout restart deployment/frontend -n expensy
 
-          # Wait for rollout to complete
+          # Step 7: Wait for rollout to complete
           kubectl rollout status deployment/backend -n expensy --timeout=300s
           kubectl rollout status deployment/frontend -n expensy --timeout=300s
 
@@ -139,6 +145,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [deploy-staging]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment:
       name: production
       url: https://expensy.example.com
@@ -165,23 +172,29 @@ jobs:
           DATABASE_URI: ${{ secrets.DATABASE_URI }}
           API_URL: ${{ secrets.API_URL }}
         run: |
-          # Delete existing secret to force update (secrets don't auto-reload in pods)
+          # Step 1: Delete existing secret to force update
           kubectl delete secret expensy-secrets -n expensy --ignore-not-found=true
+          sleep 2
 
-          # Create secrets.yaml with actual values
+          # Step 2: Create secrets first (before any deployments)
           envsubst < k8s/secrets.yaml | kubectl apply -f - -n expensy
 
-          # Update image tags in Kubernetes manifests
-          sed -i "s|IMAGE_TAG|${{ github.sha }}|g" k8s/*.yaml
+          # Step 3: Wait for secret to be ready
+          kubectl get secret expensy-secrets -n expensy -o jsonpath='{.metadata.name}' 2>/dev/null || sleep 1
 
-          # Apply Kubernetes manifests
-          kubectl apply -f k8s/ -n expensy
+          # Step 4: Update image tags in deployment manifests (NOT secrets.yaml)
+          sed -i "s|IMAGE_TAG|${{ github.sha }}|g" k8s/deployment*.yaml k8s/backend*.yaml k8s/frontend*.yaml 2>/dev/null || true
 
-          # Force pod restart to pick up new secrets
+          # Step 5: Apply all other Kubernetes manifests (excluding secrets)
+          for file in k8s/*.yaml; do
+            [ "$file" != "k8s/secrets.yaml" ] && kubectl apply -f "$file" -n expensy
+          done
+
+          # Step 6: Force pod restart to pick up new secrets
           kubectl rollout restart deployment/backend -n expensy
           kubectl rollout restart deployment/frontend -n expensy
 
-          # Wait for rollout to complete
+          # Step 7: Wait for rollout to complete
           kubectl rollout status deployment/backend -n expensy --timeout=300s
           kubectl rollout status deployment/frontend -n expensy --timeout=300s
 
