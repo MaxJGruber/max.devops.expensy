@@ -130,6 +130,7 @@ jobs:
           # Step 7: Wait for rollout to complete
           kubectl rollout status deployment/backend -n expensy --timeout=300s
           kubectl rollout status deployment/frontend -n expensy --timeout=300s
+          kubectl rollout status deployment/prometheus -n expensy --timeout=300s
 
       - name: Run Smoke Tests
         run: |
@@ -197,6 +198,7 @@ jobs:
           # Step 7: Wait for rollout to complete
           kubectl rollout status deployment/backend -n expensy --timeout=300s
           kubectl rollout status deployment/frontend -n expensy --timeout=300s
+          kubectl rollout status deployment/prometheus -n expensy --timeout=300s
 
       - name: Verify Deployment
         run: |
