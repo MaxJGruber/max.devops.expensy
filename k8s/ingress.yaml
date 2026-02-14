@@ -10,6 +10,13 @@ spec:
   rules:
     - http:
         paths:
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus
+                port:
+                  number: 9090
           - path: /api(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
