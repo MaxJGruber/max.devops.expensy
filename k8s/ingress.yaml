@@ -17,13 +17,20 @@ spec:
                 name: prometheus
                 port:
                   number: 9090
-          - path: /api(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /api
+            pathType: Prefix
             backend:
               service:
                 name: backend
                 port:
                   number: 8706
+          - path: /grafana
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
           - path: /
             pathType: Prefix
             backend:

@@ -104,6 +104,8 @@ jobs:
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           DATABASE_URI: ${{ secrets.DATABASE_URI }}
           API_URL: ${{ secrets.API_URL }}
+          GRAFANA_USER: ${{ secrets.GRAFANA_USER }}
+          GRAFANA_PASS: ${{ secrets.GRAFANA_PASS }}
         run: |
           # Step 1: Delete existing secret to force update
           kubectl delete secret expensy-secrets -n expensy --ignore-not-found=true
@@ -126,11 +128,13 @@ jobs:
           # Step 6: Force pod restart to pick up new secrets
           kubectl rollout restart deployment/backend -n expensy
           kubectl rollout restart deployment/frontend -n expensy
+          kubectl rollout restart deployment/grafana -n expensy
 
           # Step 7: Wait for rollout to complete
           kubectl rollout status deployment/backend -n expensy --timeout=300s
           kubectl rollout status deployment/frontend -n expensy --timeout=300s
           kubectl rollout status deployment/prometheus -n expensy --timeout=300s
+          kubectl rollout status deployment/grafana -n expensy --timeout=300s
 
       - name: Run Smoke Tests
         run: |
@@ -172,6 +176,8 @@ jobs:
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           DATABASE_URI: ${{ secrets.DATABASE_URI }}
           API_URL: ${{ secrets.API_URL }}
+          GRAFANA_USER: ${{ secrets.GRAFANA_USER }}
+          GRAFANA_PASS: ${{ secrets.GRAFANA_PASS }}
         run: |
           # Step 1: Delete existing secret to force update
           kubectl delete secret expensy-secrets -n expensy --ignore-not-found=true
@@ -194,11 +200,13 @@ jobs:
           # Step 6: Force pod restart to pick up new secrets
           kubectl rollout restart deployment/backend -n expensy
           kubectl rollout restart deployment/frontend -n expensy
+          kubectl rollout restart deployment/grafana -n expensy
 
           # Step 7: Wait for rollout to complete
           kubectl rollout status deployment/backend -n expensy --timeout=300s
           kubectl rollout status deployment/frontend -n expensy --timeout=300s
           kubectl rollout status deployment/prometheus -n expensy --timeout=300s
+          kubectl rollout status deployment/grafana -n expensy --timeout=300s
 
       - name: Verify Deployment
         run: |

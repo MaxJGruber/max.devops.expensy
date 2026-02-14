@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: expensy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: grafana/grafana:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: expensy-secrets
+                  key: grafana_user
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: expensy-secrets
+                  key: grafana_pass
+            - name: GF_SERVER_ROOT_URL
+              value: http://expensy.example.com/grafana
+            - name: GF_SERVER_SERVE_FROM_SUB_PATH
+              value: "true"
+            - name: GF_PATHS_DATA
+              value: /var/lib/grafana
+            - name: GF_INSTALL_PLUGINS
+              value: ""
+          volumeMounts:
+            - name: grafana-data
+              mountPath: /var/lib/grafana
+      volumes:
+        - name: grafana-data
+          persistentVolumeClaim:
+            claimName: grafana-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: expensy
+spec:
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
