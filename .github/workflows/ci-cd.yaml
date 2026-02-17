@@ -21,6 +21,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
       ingress-ip: ${{ steps.get-ingress-ip.outputs.ip }}
+      workspace-id: ${{ steps.log-analytics.outputs.workspace-id }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,6 +35,35 @@ jobs:
         run: |
           az extension add --name aks-preview --upgrade || true
 
+      - name: Create/Verify Log Analytics Workspace
+        id: log-analytics
+        run: |
+          RESOURCE_GROUP="${{ secrets.AKS_RESOURCE_GROUP }}"
+          WORKSPACE_NAME="${{ secrets.AKS_CLUSTER_NAME }}-logs"
+          LOCATION="${{ secrets.AKS_LOCATION || 'westeurope' }}"
+
+          echo "Checking if Log Analytics workspace exists..."
+          WORKSPACE_ID=$(az monitor log-analytics workspace show \
+            --resource-group "$RESOURCE_GROUP" \
+            --workspace-name "$WORKSPACE_NAME" \
+            --query id -o tsv 2>/dev/null || true)
+
+          if [ -z "$WORKSPACE_ID" ]; then
+            echo "Creating Log Analytics workspace..."
+            az group create --name "$RESOURCE_GROUP" --location "$LOCATION" || true
+            WORKSPACE_ID=$(az monitor log-analytics workspace create \
+              --resource-group "$RESOURCE_GROUP" \
+              --workspace-name "$WORKSPACE_NAME" \
+              --location "$LOCATION" \
+              --retention-time 30 \
+              --query id -o tsv)
+            echo "✓ Workspace created: $WORKSPACE_ID"
+          else
+            echo "✓ Workspace already exists: $WORKSPACE_ID"
+          fi
+
+          echo "workspace-id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
+
       - name: Create/Verify AKS Cluster
         run: |
           RESOURCE_GROUP="${{ secrets.AKS_RESOURCE_GROUP }}"
@@ -45,6 +75,12 @@ jobs:
           echo "Checking if cluster exists..."
           if az aks show --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME" &> /dev/null; then
             echo "✓ Cluster $CLUSTER_NAME already exists"
+            echo "Enabling Container Insights on existing cluster..."
+            az aks enable-addons \
+              --resource-group "$RESOURCE_GROUP" \
+              --name "$CLUSTER_NAME" \
+              --addons monitoring \
+              --workspace-resource-id "${{ steps.log-analytics.outputs.workspace-id }}" || echo "Container Insights may already be enabled"
           else
             echo "Creating resource group..."
             az group create \
@@ -59,7 +95,9 @@ jobs:
               --node-vm-size "$NODE_VM_SIZE" \
               --enable-managed-identity \
               --generate-ssh-keys \
-              --location "$LOCATION"
+              --location "$LOCATION" \
+              --enable-addons monitoring \
+              --workspace-resource-id "${{ steps.log-analytics.outputs.workspace-id }}"
           fi
 
       - name: Get AKS Credentials
@@ -68,6 +106,36 @@ jobs:
             --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
             --name ${{ secrets.AKS_CLUSTER_NAME }} \
             --overwrite-existing
+
+      - name: Verify Container Insights
+        run: |
+          RESOURCE_GROUP="${{ secrets.AKS_RESOURCE_GROUP }}"
+          CLUSTER_NAME="${{ secrets.AKS_CLUSTER_NAME }}"
+
+          echo "================================"
+          echo "Checking Container Insights Status"
+          echo "================================"
+
+          echo ""
+          echo "1. Addon Profile Status:"
+          az aks show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$CLUSTER_NAME" \
+            --query "addonProfiles.omsagent" -o json || echo "omsagent addon not found"
+
+          echo ""
+          echo "2. Checking Log Analytics Workspace:"
+          az aks show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$CLUSTER_NAME" \
+            --query "addonProfiles.omsagent.config.logAnalyticsWorkspaceResourceID" -o tsv || echo "Workspace ID not found"
+
+          echo ""
+          echo "3. Checking for oma-logs DaemonSet:"
+          kubectl get daemonset -n kube-system | grep -i oma || echo "oma-logs not yet deployed (may take a few minutes)"
+
+          echo ""
+          echo "✓ Container Insights verification complete"
 
       - name: Verify Cluster Connection
         run: kubectl cluster-info

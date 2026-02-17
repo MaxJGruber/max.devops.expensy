@@ -15,6 +15,7 @@ CLUSTER_NAME="${CLUSTER_NAME:-aks-expensy}"
 LOCATION="${LOCATION:-westeurope}"
 NODE_COUNT="${NODE_COUNT:-1}"
 NODE_VM_SIZE="${NODE_VM_SIZE:-Standard_D2s_v3}"
+WORKSPACE_NAME="${CLUSTER_NAME}-logs"
 INGRESS_NAMESPACE="ingress-nginx"
 
 # Secrets configuration (use environment variables or defaults)
@@ -41,6 +42,34 @@ log_error() {
 
 log_warning() {
   echo -e "${YELLOW}⚠️  $1${NC}"
+}
+
+create_log_analytics_workspace() {
+  log_info "Creating/Verifying Log Analytics Workspace: $WORKSPACE_NAME"
+
+  WORKSPACE_ID=$(az monitor log-analytics workspace show \
+    --resource-group "$RESOURCE_GROUP" \
+    --workspace-name "$WORKSPACE_NAME" \
+    --query id -o tsv 2>/dev/null || true)
+
+  if [ -z "$WORKSPACE_ID" ]; then
+    log_info "Creating Log Analytics workspace..."
+    az group create \
+      --name "$RESOURCE_GROUP" \
+      --location "$LOCATION" || log_warning "Resource group may already exist"
+
+    WORKSPACE_ID=$(az monitor log-analytics workspace create \
+      --resource-group "$RESOURCE_GROUP" \
+      --workspace-name "$WORKSPACE_NAME" \
+      --location "$LOCATION" \
+      --retention-time 30 \
+      --query id -o tsv)
+    log_success "Log Analytics workspace created"
+  else
+    log_success "Log Analytics workspace already exists"
+  fi
+
+  echo "$WORKSPACE_ID"
 }
 
 check_prerequisites() {
@@ -74,10 +103,18 @@ check_prerequisites() {
 create_aks_cluster() {
   log_info "Creating AKS cluster: $CLUSTER_NAME"
 
+  # Create or get Log Analytics workspace ID
+  WORKSPACE_ID=$(create_log_analytics_workspace)
+
   # Check if cluster already exists
   if az aks show --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME" &> /dev/null; then
     log_warning "Cluster $CLUSTER_NAME already exists in resource group $RESOURCE_GROUP"
-    log_info "Skipping cluster creation"
+    log_info "Enabling Container Insights on existing cluster..."
+    az aks enable-addons \
+      --resource-group "$RESOURCE_GROUP" \
+      --name "$CLUSTER_NAME" \
+      --addons monitoring \
+      --workspace-resource-id "$WORKSPACE_ID" || log_warning "Container Insights may already be enabled"
   else
     log_info "Creating resource group: $RESOURCE_GROUP"
     az group create \
@@ -92,7 +129,9 @@ create_aks_cluster() {
       --node-vm-size "$NODE_VM_SIZE" \
       --enable-managed-identity \
       --generate-ssh-keys \
-      --location "$LOCATION"
+      --location "$LOCATION" \
+      --enable-addons monitoring \
+      --workspace-resource-id "$WORKSPACE_ID"
   fi
 
   log_success "AKS cluster created/verified"
@@ -118,6 +157,42 @@ verify_cluster_connection() {
   }
 
   log_success "Connected to cluster"
+}
+
+verify_container_insights() {
+  log_info "Verifying Container Insights..."
+
+  echo ""
+  echo "================================"
+  echo "Container Insights Status"
+  echo "================================"
+
+  echo ""
+  log_info "1. Addon Profile Status:"
+  az aks show \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$CLUSTER_NAME" \
+    --query "addonProfiles.omsagent" -o json || log_warning "omsagent addon not found"
+
+  echo ""
+  log_info "2. Log Analytics Workspace:"
+  WORKSPACE_RESOURCE=$(az aks show \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$CLUSTER_NAME" \
+    --query "addonProfiles.omsagent.config.logAnalyticsWorkspaceResourceID" -o tsv 2>/dev/null || true)
+
+  if [ -n "$WORKSPACE_RESOURCE" ]; then
+    echo "✓ Workspace: $WORKSPACE_RESOURCE"
+  else
+    log_warning "Workspace ID not found"
+  fi
+
+  echo ""
+  log_info "3. oma-logs DaemonSet:"
+  kubectl get daemonset -n kube-system | grep -i oma || log_warning "oma-logs not yet deployed (may take a few minutes)"
+
+  echo ""
+  log_success "Container Insights verification complete"
 }
 
 create_namespace() {
@@ -248,6 +323,7 @@ main() {
   create_aks_cluster
   get_cluster_credentials
   verify_cluster_connection
+  verify_container_insights
   create_namespace
   create_secrets
   install_ingress_controller
