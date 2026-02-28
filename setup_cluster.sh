@@ -236,7 +236,11 @@ install_ingress_controller() {
     log_info "Installing ingress-nginx chart..."
     helm install ingress-nginx ingress-nginx/ingress-nginx \
       --namespace "$INGRESS_NAMESPACE" \
-      --create-namespace
+      --create-namespace \
+      --set controller.resources.requests.cpu=50m \
+      --set controller.resources.requests.memory=90Mi \
+      --set controller.resources.limits.cpu=200m \
+      --set controller.resources.limits.memory=256Mi
   fi
 
   log_success "Ingress controller installed/verified"

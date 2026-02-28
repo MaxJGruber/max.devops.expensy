@@ -18,6 +18,13 @@ spec:
           image: kabamaru2372/expensy-frontend:latest
           ports:
             - containerPort: 3000
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
           env:
             - name: API_URL
               valueFrom:

@@ -153,7 +153,11 @@ jobs:
           else
             helm install ingress-nginx ingress-nginx/ingress-nginx \
               --namespace ingress-nginx \
-              --create-namespace
+              --create-namespace \
+              --set controller.resources.requests.cpu=50m \
+              --set controller.resources.requests.memory=90Mi \
+              --set controller.resources.limits.cpu=200m \
+              --set controller.resources.limits.memory=256Mi
           fi
 
       - name: Wait for Ingress Controller
