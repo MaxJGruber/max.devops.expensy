@@ -14,7 +14,7 @@ RESOURCE_GROUP="${RESOURCE_GROUP:-rg-expensy-aks}"
 CLUSTER_NAME="${CLUSTER_NAME:-aks-expensy}"
 LOCATION="${LOCATION:-westeurope}"
 NODE_COUNT="${NODE_COUNT:-1}"
-NODE_VM_SIZE="${NODE_VM_SIZE:-Standard_D2s_v3}"
+NODE_VM_SIZE="${NODE_VM_SIZE:-Standard_D4s_v3}"
 WORKSPACE_NAME="${CLUSTER_NAME}-logs"
 INGRESS_NAMESPACE="ingress-nginx"
 

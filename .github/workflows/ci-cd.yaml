@@ -70,7 +70,7 @@ jobs:
           CLUSTER_NAME="${{ secrets.AKS_CLUSTER_NAME }}"
           LOCATION="${{ secrets.AKS_LOCATION || 'westeurope' }}"
           NODE_COUNT="${{ secrets.AKS_NODE_COUNT || 1 }}"
-          NODE_VM_SIZE="${{ secrets.AKS_NODE_VM_SIZE || 'Standard_D2s_v3' }}"
+          NODE_VM_SIZE="${{ secrets.AKS_NODE_VM_SIZE || 'Standard_D4s_v3' }}"
 
           echo "Checking if cluster exists..."
           if az aks show --resource-group "$RESOURCE_GROUP" --name "$CLUSTER_NAME" &> /dev/null; then
